@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+/*
+
+以下是一个简单实用的 Golang 随机工具包，封装了推荐用法，并支持：
+	•	创建独立的随机源（线程安全）
+	•	生成整数、浮点数、随机字符串等
+	•	可选指定种子（方便测试）
+*/
+
 type RandUtil struct {
 	r  *rand.Rand
 	mu sync.Mutex
