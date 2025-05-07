@@ -1,0 +1,15 @@
+*.zip
+log/*
+*.log
+parse_logsget_qdas_hdzy*
+qcm_demo/*.log.*
+qcm_sdk.*
+qcm_go-1.0.2-1/*
+*.so
+file_handle/fileDo
+file_handle/fileDo1
+file_handle/fileDo2
+*/vendor/*
+vendor/*
+cache/*
+*/cache/*
