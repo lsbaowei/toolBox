@@ -20,18 +20,22 @@ type ExecResult struct {
 	Err    error
 }
 
+func (ei *ExecInfo) GetResult() *ExecResult {
+	return ei.Result
+}
+
 func (er *ExecResult) IsError() bool {
-	if er.Err == nil {
-		return false
+	if er == nil || er.Err != nil {
+		return true
 	}
-	return true
+	return false
 }
 
 func (er *ExecResult) IsStderr() bool {
-	if er.Stderr.Len() == 0 {
-		return false
+	if er == nil || er.Stderr.Len() > 0 {
+		return true
 	}
-	return true
+	return false
 }
 
 func (er *ExecResult) Success() bool {
