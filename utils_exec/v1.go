@@ -62,26 +62,25 @@ func ExecCmd(ctx context.Context, name string, args []string) *ExecInfo {
 		},
 	}
 
-	// 要执行的命令
-	cmd := exec.Command(name, args...) // 你可以替换成任何命令，如 "ffmpeg", "curl", etc.
+	errCh := make(chan error, 1)
 
-	// 捕获输出（标准输出 & 标准错误）  var stdout, stderr bytes.Buffer
-	cmd.Stdout = &res.Result.Stdout
-	cmd.Stderr = &res.Result.Stderr
+	go func() {
+		cmd := exec.Command(name, args...) // 要执行的命令 // 你可以替换成任何命令，如 "ffmpeg", "curl", etc.
 
-	// 执行命令
-	res.Result.Err = cmd.Run()
+		// 捕获输出（标准输出 & 标准错误）  var stdout, stderr bytes.Buffer
+		cmd.Stdout = &res.Result.Stdout
+		cmd.Stderr = &res.Result.Stderr
 
-	//// 输出结果
-	//fmt.Println("STDOUT:\n", stdout.String())
-	//fmt.Println("STDERR:\n", stderr.String())
-	//
-	//// 检查是否执行成功
-	//if err != nil {
-	//	fmt.Printf("Command failed with error: %v\n", err)
-	//} else {
-	//	fmt.Println("Command executed successfully.")
-	//}
+		// 执行命令
+		errCh <- cmd.Run() // 命令执行完成后发送信号
+	}()
+
+	select {
+	case <-ctx.Done():
+		res.Result.Err = ctx.Err()
+	case err := <-errCh:
+		res.Result.Err = err // 这里可以添加其他逻辑，如果需要在执行命令前做一些事情
+	}
 
 	return res
 }
