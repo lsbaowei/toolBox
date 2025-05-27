@@ -3,7 +3,9 @@ package utils_exec
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
+	"runtime/debug"
 )
 
 type ExecInfo struct {
@@ -69,6 +71,13 @@ func ExecCmd(ctx context.Context, name string, args []string) *ExecInfo {
 	errCh := make(chan error, 1)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// 将 panic 信息转换成 error 并写入 errCh
+				errCh <- fmt.Errorf("panic occurred: %v; %s", r, debug.Stack())
+			}
+		}()
+
 		cmd := exec.Command(name, args...) // 要执行的命令 // 你可以替换成任何命令，如 "ffmpeg", "curl", etc.
 
 		// 捕获输出（标准输出 & 标准错误）  var stdout, stderr bytes.Buffer
