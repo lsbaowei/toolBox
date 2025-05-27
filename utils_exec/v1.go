@@ -39,10 +39,10 @@ func (er *ExecResult) IsStderr() bool {
 }
 
 func (er *ExecResult) Success() bool {
-	if er.IsError() || er.IsStderr() {
-		return false
+	if !er.IsError() && !er.IsStderr() {
+		return true
 	}
-	return true
+	return false
 }
 
 func (er *ExecResult) GetStdoutString() string {
