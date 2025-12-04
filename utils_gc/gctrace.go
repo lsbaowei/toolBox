@@ -16,6 +16,13 @@ import (
 	"time"
 )
 
+/**
+使用须知：
+1，环境注入GODEBUG=gctrace=1
+2，调用RejectGCTraceLog() 一定要在main函数中第一步就调用上。
+
+**/
+
 func RejectGCTraceLog() error {
 	// 开启 gctrace   GODEBUG=gctrace=1
 	// _ = os.Setenv("GODEBUG", "gctrace=1")
