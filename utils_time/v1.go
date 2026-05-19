@@ -8,10 +8,17 @@ import (
 	"time"
 )
 
-// layouts 按优先级排列；前两项无时区，其余含 Z、-0700 或 MST 等时区占位符。
-var layouts = []string{
+// layoutEntry 预计算的布局元数据。
+type layoutEntry struct {
+	layout  string
+	hasZone bool
+}
+
+// 按优先级排列；前两项无时区，其余含时区占位符。
+var layoutStrings = []string{
 	"2006-01-02 15:04:05",
 	"2006-01-02",
+	"2006-01-02T15:04:05",
 	time.RFC3339,
 	time.RFC3339Nano,
 	time.RFC1123Z,
@@ -27,13 +34,31 @@ var layouts = []string{
 	"01/02 03:04:05PM '06 -0700",
 }
 
+var (
+	allLayouts       []layoutEntry
+	entryDateTime     = layoutEntry{"2006-01-02 15:04:05", false}
+	entryDateOnly     = layoutEntry{"2006-01-02", false}
+	entryISODateTime  = layoutEntry{"2006-01-02T15:04:05", false}
+	entryRFC3339      = layoutEntry{time.RFC3339, true}
+	entryRFC3339Nano = layoutEntry{time.RFC3339Nano, true}
+)
+
+func init() {
+	allLayouts = make([]layoutEntry, len(layoutStrings))
+	for i, layout := range layoutStrings {
+		allLayouts[i] = layoutEntry{layout: layout, hasZone: hasZoneInLayout(layout)}
+	}
+}
+
 const (
 	secThreshold = 10000000000    // ~2286年，秒/毫秒分界
 	msThreshold  = 10000000000000 // ~2286年（毫秒上界）
 )
 
 // ParseUnixTimestamp 在安全区间内解析 Unix 时间戳（秒或毫秒）。
-// 秒：0 < ts < secThreshold；毫秒：secThreshold <= ts < msThreshold；否则返回 error。
+// 秒：0 < ts < secThreshold；
+// 毫秒：secThreshold <= ts < msThreshold；
+// 否则返回 error。
 func ParseUnixTimestamp(ts int64) (time.Time, error) {
 	switch {
 	case ts > 0 && ts < secThreshold:
@@ -128,31 +153,82 @@ func isDecimalIntString(s string) bool {
 	return true
 }
 
+// candidateLayouts 按长度与形态返回优先尝试的布局；无命中特征时返回 nil（走全量列表）。
+func candidateLayouts(s string) []layoutEntry {
+	n := len(s)
+	if n == 10 && s[4] == '-' && s[7] == '-' {
+		return []layoutEntry{entryDateOnly}
+	}
+	if n == 19 && s[4] == '-' && s[7] == '-' && s[10] == ' ' && s[13] == ':' && s[16] == ':' {
+		return []layoutEntry{entryDateTime}
+	}
+	if n == 19 && s[4] == '-' && s[7] == '-' && s[10] == 'T' && s[13] == ':' && s[16] == ':' && !hasTimeZoneSuffix(s) {
+		return []layoutEntry{entryISODateTime}
+	}
+	if n >= 20 && n <= 40 && s[10] == 'T' {
+		if strings.IndexByte(s[10:], '.') >= 0 {
+			return []layoutEntry{entryRFC3339Nano, entryRFC3339}
+		}
+		return []layoutEntry{entryRFC3339, entryRFC3339Nano}
+	}
+	return nil
+}
+
+// hasTimeZoneSuffix 判断 ISO 串在日期时间分隔符之后是否含 Z 或 ±offset。
+func hasTimeZoneSuffix(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	last := s[len(s)-1]
+	if last == 'Z' || last == 'z' {
+		return true
+	}
+	for i := 11; i < len(s); i++ {
+		if s[i] == '+' || s[i] == '-' {
+			return true
+		}
+	}
+	return false
+}
+
 func parseWithLayouts(str string, loc *time.Location, utcMode bool) (time.Time, error) {
-	for _, layout := range layouts {
-		t, err := time.Parse(layout, str)
-		if err != nil {
-			continue
-		}
-		if hasZoneInfo(layout) {
+	if candidates := candidateLayouts(str); len(candidates) > 0 {
+		if t, ok := tryLayoutEntries(str, loc, utcMode, candidates); ok {
 			return t, nil
 		}
-		if utcMode {
-			return t, nil
-		}
-		return wallClockIn(t, loc), nil
+	}
+	if t, ok := tryLayoutEntries(str, loc, utcMode, allLayouts); ok {
+		return t, nil
 	}
 	return time.Time{}, errors.New("no matching layout")
 }
 
-func wallClockIn(t time.Time, loc *time.Location) time.Time {
-	if loc == nil {
-		loc = time.Local
+func tryLayoutEntries(str string, loc *time.Location, utcMode bool, entries []layoutEntry) (time.Time, bool) {
+	for _, e := range entries {
+		t, err := parseLayoutEntry(str, loc, utcMode, e)
+		if err == nil {
+			return t, true
+		}
 	}
-	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc)
+	return time.Time{}, false
 }
 
-func hasZoneInfo(layout string) bool {
+func parseLayoutEntry(str string, loc *time.Location, utcMode bool, e layoutEntry) (time.Time, error) {
+	if e.hasZone {
+		return time.Parse(e.layout, str)
+	}
+	zone := time.UTC
+	if !utcMode {
+		if loc == nil {
+			zone = time.Local
+		} else {
+			zone = loc
+		}
+	}
+	return time.ParseInLocation(e.layout, str, zone)
+}
+
+func hasZoneInLayout(layout string) bool {
 	return strings.Contains(layout, "Z") ||
 		strings.Contains(layout, "-0700") ||
 		strings.Contains(layout, "MST")

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-19 — add-iso-datetime-layouts
+
+### utils_time
+
+- **新增**：layout `2006-01-02T15:04:05`（无时区 ISO `T` 分隔）；`hasTimeZoneSuffix` 与 `candidateLayouts` 快路径（19 字符 `T`、`T` 形态上限 40）。
+- **测试**：`TestParseTimeUTC_task5Samples` 覆盖 README 任务 5 四种样例。
+
 ## 2026-05-19 — optimize-rand-reuse
 
 ### utils_time

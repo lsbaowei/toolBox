@@ -149,6 +149,11 @@ func TestParseTimeUTC(t *testing.T) {
 			input:   "not-a-date",
 			wantErr: true,
 		},
+		{
+			name:  "RFC1123 fallback",
+			input: "Tue, 28 May 2024 15:04:05 GMT",
+			want:  time.Date(2024, 5, 28, 15, 4, 5, 0, time.UTC),
+		},
 	}
 
 	for _, tt := range tests {
@@ -232,8 +237,66 @@ func TestParseTime(t *testing.T) {
 			}
 			if !got.Equal(tt.want) {
 				t.Fatalf("got %s want %s", got.Format(time.RFC3339), tt.want.Format(time.RFC3339))
+			} else {
+				t.Logf("got %s want %s", got.Format(time.RFC3339), tt.want.Format(time.RFC3339))
 			}
 		})
+	}
+}
+
+func TestParseTimeUTC_task5Samples(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+
+	tests := []struct {
+		name  string
+		input string
+		want  time.Time
+	}{
+		{
+			name:  "nanoseconds and offset",
+			input: "2025-11-19T11:33:19.920584349+08:00",
+			want:  time.Date(2025, 11, 19, 3, 33, 19, 920584349, time.UTC),
+		},
+		{
+			name:  "milliseconds and offset",
+			input: "2026-05-18T15:29:04.527+08:00",
+			want:  time.Date(2026, 5, 18, 7, 29, 4, 527000000, time.UTC),
+		},
+		{
+			name:  "offset without fractional seconds",
+			input: "2025-01-02T15:04:05+08:00",
+			want:  time.Date(2025, 1, 2, 7, 4, 5, 0, time.UTC),
+		},
+		{
+			name:  "ISO datetime UTC wall",
+			input: "2025-01-02T15:04:05",
+			want:  time.Date(2025, 1, 2, 15, 4, 5, 0, time.UTC),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseTimeUTC(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Fatalf("got %s want %s", got.Format(time.RFC3339Nano), tt.want.Format(time.RFC3339Nano))
+			} else {
+				t.Logf("got %s WANT_OK %s", got.Format(time.RFC3339Nano), tt.want.Format(time.RFC3339Nano))
+			}
+		})
+	}
+
+	got, err := ParseTime("2025-01-02T15:04:05", loc)
+	if err != nil {
+		t.Fatalf("ParseTime: %v", err)
+	}
+	want := time.Date(2025, 1, 2, 15, 4, 5, 0, loc)
+	if !got.Equal(want) {
+		t.Fatalf("ParseTime wall got %s want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
+	} else {
+		t.Logf("ParseTime wall got %s WANT_OK %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }
 
