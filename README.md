@@ -61,14 +61,26 @@
 
     全库审查与修复见 [CHANGELOG.md](CHANGELOG.md)。摘要：修复 `JSONDecode`、随机数上界、`OnceFullWrite` panic、`ExecCmd` 上下文取消等；demo 迁至 `cmd/csvdemo`；补充多包单元测试。
 
-## 任务4：优化
-    基于结论：
-        rand.New(rand.NewSource(time.Now().UnixMilli())) 明显优于 每次 rand.Seed；
-        若追求性能和并发，应 复用 *rand.Rand，安全场景用 crypto/rand。
+## 任务4：随机数优化（已完成）
 
-    优化：
-        现有代码，复用 *rand.Rand，提高性能
-        单独提供 安全场景用 crypto/rand，封装。
+    **伪随机**（复用 `*rand.Rand`，适合抖动、抽样、非安全场景）
 
+    ```go
+    d := utils_time.New(nil)
+    n := d.Random(100)                    // DateTime，毫秒因子播种
 
+    ru := utils_random.New()
+    x := ru.Intn(100)                     // 独立实例，线程安全
 
+    y := utils_random.IntV2()             // 包级共享源
+    ```
+
+    **安全随机**（`crypto/rand`，适合 token、密钥、不可预测场景）
+
+    ```go
+    v, err := utils_random.SecureIntn(100) // [0, 100)
+    w, err := utils_random.SecureInt64()  // [0, 2^63)
+  // 或 utils_random.IntWithSafety()
+    ```
+
+    详见 [CHANGELOG.md](CHANGELOG.md) 中 `optimize-rand-reuse` 条目。

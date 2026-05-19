@@ -2,7 +2,13 @@ package utils_time
 
 import (
 	"math/rand"
+	"sync"
 	"time"
+)
+
+var (
+	pseudoRandMu sync.Mutex
+	pseudoRand   = rand.New(rand.NewSource(time.Now().UnixMilli()))
 )
 
 // DateTime 封装不可变的基础时间，变换方法均返回新实例。
@@ -67,14 +73,17 @@ func (d *DateTime) RemainingSeconds(other *time.Time) int64 {
 	return d.t.Unix() - other.Unix()
 }
 
-// Random 返回 [0, max) 的伪随机整数，以当前毫秒时间戳为种子因子。
-// max <= 0 时返回 0。
+// Random 返回 [0, max) 的伪随机整数，复用包内 *rand.Rand，每次以当前毫秒时间戳播种。
+// max <= 0 时返回 0。非安全场景使用；安全场景请用 utils_random.SecureIntn。
 func (d *DateTime) Random(max int64) int64 {
 	if max <= 0 {
 		return 0
 	}
-	r := rand.New(rand.NewSource(time.Now().UnixMilli()))
-	return r.Int63n(max)
+	pseudoRandMu.Lock()
+	pseudoRand.Seed(time.Now().UnixMilli())
+	n := pseudoRand.Int63n(max)
+	pseudoRandMu.Unlock()
+	return n
 }
 
 // StartOfDay 返回当日 00:00:00。

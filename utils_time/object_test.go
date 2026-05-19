@@ -162,3 +162,23 @@ func TestRandom(t *testing.T) {
 		}
 	}
 }
+
+func TestRandomConcurrent(t *testing.T) {
+	d := New(nil)
+	const max int64 = 10
+	done := make(chan struct{})
+	for i := 0; i < 8; i++ {
+		go func() {
+			for j := 0; j < 50; j++ {
+				got := d.Random(max)
+				if got < 0 || got >= max {
+					t.Errorf("out of range: %d", got)
+				}
+			}
+			done <- struct{}{}
+		}()
+	}
+	for i := 0; i < 8; i++ {
+		<-done
+	}
+}

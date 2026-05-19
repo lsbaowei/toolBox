@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-19 — optimize-rand-reuse
+
+### utils_time
+
+- **改进**：`DateTime.Random` 复用包级 `*rand.Rand`（互斥锁），不再每次 `rand.New`；仍以 `UnixMilli()` 播种。
+
+### utils_random
+
+- **改进**：`IntV2` 复用包级共享伪随机源。
+- **新增**：`SecureIntn(max)`、`SecureInt64()`（`crypto/rand`）；`IntWithSafety` 委托 `SecureInt64`。
+- **文档**：`ExampleSecureIntn` / `ExampleDateTime_Random` / `ExampleRandUtil_Intn`。
+
 ## 2026-05-19 — toolbox-code-audit
 
 ### utils_json
