@@ -57,3 +57,18 @@
     n := d.Random(100)              // [0, 100)
     ```
 
+## 任务3：代码审查与加固（已完成）
+
+    全库审查与修复见 [CHANGELOG.md](CHANGELOG.md)。摘要：修复 `JSONDecode`、随机数上界、`OnceFullWrite` panic、`ExecCmd` 上下文取消等；demo 迁至 `cmd/csvdemo`；补充多包单元测试。
+
+## 任务4：优化
+    基于结论：
+        rand.New(rand.NewSource(time.Now().UnixMilli())) 明显优于 每次 rand.Seed；
+        若追求性能和并发，应 复用 *rand.Rand，安全场景用 crypto/rand。
+
+    优化：
+        现有代码，复用 *rand.Rand，提高性能
+        单独提供 安全场景用 crypto/rand，封装。
+
+
+

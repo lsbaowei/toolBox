@@ -10,14 +10,24 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// JSONEncode 序列化为 JSON 字符串；失败时返回空字符串，推荐使用 JSONEncodeE。
 func JSONEncode(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
+	s, _ := JSONEncodeE(v)
+	return s
 }
 
+// JSONEncodeE 序列化为 JSON 字符串并返回错误。
+func JSONEncodeE(v interface{}) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// JSONDecode 反序列化到 result（须为指针），语义同 encoding/json.Unmarshal。
 func JSONDecode(v string, result interface{}) error {
-	err := json.Unmarshal([]byte(v), &result)
-	return err
+	return json.Unmarshal([]byte(v), result)
 }
 
 func JSONDecodeV2(v interface{}, result interface{}) error {
@@ -25,13 +35,16 @@ func JSONDecodeV2(v interface{}, result interface{}) error {
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(b, &result)
-	return err
+	return json.Unmarshal(b, result)
 }
 
 func MapFilter(input map[string]int, max int) map[string]int {
 	if len(input) <= max {
-		return input
+		result := make(map[string]int, len(input))
+		for k, v := range input {
+			result[k] = v
+		}
+		return result
 	}
 	result := make(map[string]int, max)
 	for k, v := range input {
@@ -51,7 +64,11 @@ func MapFilter(input map[string]int, max int) map[string]int {
 
 func MapInt64Filter(input map[string]int64, max int) map[string]int64 {
 	if len(input) <= max {
-		return input
+		result := make(map[string]int64, len(input))
+		for k, v := range input {
+			result[k] = v
+		}
+		return result
 	}
 	result := make(map[string]int64, max)
 	for k, v := range input {
@@ -76,11 +93,7 @@ func ParseStruct(input proto.Message, result interface{}) error {
 		return err
 	}
 
-	err = json.Unmarshal(b, &result)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(b, result)
 }
 
 // StructToMap Convert structpb.Struct to map[string]interface{}

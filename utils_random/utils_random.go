@@ -7,9 +7,11 @@ import (
 	"time"
 )
 
-// Int 普通
+// Int 使用全局随机源；每次调用会 Seed，已废弃，请用 IntV2 或 RandUtil。
+//
+// Deprecated: 使用 IntV2 或 utils_random.New。
 func Int() int {
-	rand.Seed(time.Now().UnixNano()) // 一定要播种，否则每次结果一样
+	rand.Seed(time.Now().UnixNano()) //nolint:staticcheck // 保持旧行为
 	return rand.Int()
 }
 
@@ -21,13 +23,14 @@ func IntV2() int {
 	return r.Int()
 }
 
-// IntWithSafety 安全 & 不可预测
-func IntWithSafety() int64 {
-	n, err := rand2.Int(rand2.Reader, big.NewInt(2^63)) // 0 <= n < 100
+// IntWithSafety 使用 crypto/rand，返回 [0, 2^63) 范围内的 int64。
+func IntWithSafety() (int64, error) {
+	upper := new(big.Int).Lsh(big.NewInt(1), 63)
+	n, err := rand2.Int(rand2.Reader, upper)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-	return n.Int64()
+	return n.Int64(), nil
 }
 
 // IntWithT 想要可重复的随机数（调试/测试用）

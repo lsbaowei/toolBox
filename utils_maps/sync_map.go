@@ -3,6 +3,7 @@ package utils_maps
 import (
 	"bytes"
 	"encoding/gob"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -35,6 +36,7 @@ type LocalSyncMap struct {
 	m        sync.Map
 	stopChan chan struct{}
 	once     sync.Once
+	stopOnce sync.Once
 }
 
 type LocalSyncMapValue struct {
@@ -42,11 +44,20 @@ type LocalSyncMapValue struct {
 	ExpireTime int64
 }
 
-// Init 初始化 LocalSyncMap，启动定时清理 goroutine
+// Init 初始化 LocalSyncMap，启动定时清理 goroutine。使用前须调用；与 Stop 成对使用。
 func (lsm *LocalSyncMap) Init() {
 	lsm.once.Do(func() {
 		lsm.stopChan = make(chan struct{})
 		go lsm.cleanupExpired()
+	})
+}
+
+// Stop 停止定时清理 goroutine；可安全多次调用。
+func (lsm *LocalSyncMap) Stop() {
+	lsm.stopOnce.Do(func() {
+		if lsm.stopChan != nil {
+			close(lsm.stopChan)
+		}
 	})
 }
 
@@ -73,25 +84,22 @@ func (lsm *LocalSyncMap) cleanupExpired() {
 	}
 }
 
-// deepCopy 使用 gob 进行深拷贝，性能优于 JSON
+// deepCopy 使用 gob 进行深拷贝；按值类型创建目标，避免 interface{} 解码失败。
 func deepCopy(src interface{}) (interface{}, error) {
 	if src == nil {
 		return nil, nil
 	}
 
 	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(src); err != nil {
+	if err := gob.NewEncoder(&buf).Encode(src); err != nil {
 		return nil, err
 	}
 
-	dec := gob.NewDecoder(&buf)
-	var dst interface{}
-	if err := dec.Decode(&dst); err != nil {
+	dst := reflect.New(reflect.TypeOf(src)).Interface()
+	if err := gob.NewDecoder(&buf).Decode(dst); err != nil {
 		return nil, err
 	}
-
-	return dst, nil
+	return reflect.ValueOf(dst).Elem().Interface(), nil
 }
 
 // Set 设置数据，expireTime 为过期时间（秒）

@@ -6,39 +6,43 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync"
-	"time"
 )
 
 type CsvWriterObj struct {
 }
 
-// OnceFullWrite 一次性CSV文件全量写入
+// OnceFullWrite 一次性 CSV 全量写入；ctx 取消时中止写入。
 func (c *CsvWriterObj) OnceFullWrite(ctx context.Context, fs string, records [][]string) error {
 	if fs == "" {
 		return errors.New("fs is empty")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	// 创建 CSV 文件
 	file, err := os.OpenFile(fs, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer file.Close()
 
-	// 创建 CSV writer
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
 	for _, record := range records {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		if err := writer.Write(record); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
-	return nil
+	return writer.Error()
 }
 
 // CSVWriter 封装CSV写入器
@@ -181,180 +185,4 @@ func (w *CSVWriter) Close() error {
 
 	w.writer.Flush()
 	return w.file.Close()
-}
-
-// 批量写入示例
-func batchWriteExample(filename string, header []string, records [][]string, debug bool) error {
-	//header := []string{"ID", "Name", "Price", "Stock", "LastUpdated"}
-
-	writer, err := NewCSVWriter(filename, header)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-
-	// 批量写入
-	for _, record := range records {
-		if err := writer.WriteData(record); err != nil {
-			return err
-		}
-		if debug {
-			fmt.Printf("已写入产品: %v\n", record)
-		}
-	}
-
-	if debug {
-		fmt.Println("批量写入完成！")
-	}
-
-	return nil
-}
-
-// 增量追加示例
-func incrementalWriteExample(filename string) error {
-	header := []string{"ID", "Name", "Price", "Stock", "LastUpdated"}
-
-	writer, err := NewCSVWriter(filename, header)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-
-	// 模拟增量数据流
-	messages := []string{
-		"开始处理订单...",
-		"验证库存...",
-		"计算价格...",
-		"更新库存...",
-		"生成物流单号...",
-	}
-
-	for i, msg := range messages {
-		// 模拟实时数据
-		data := map[string]string{
-			"ID":          fmt.Sprintf("LOG%03d", i+1),
-			"Name":        "System Log",
-			"Price":       "0.00",
-			"Stock":       "0",
-			"LastUpdated": time.Now().Format("2006-01-02 15:04:05"),
-		}
-
-		if err := writer.WriteData(data); err != nil {
-			return err
-		}
-
-		fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), msg)
-
-		// 模拟处理延迟
-		time.Sleep(1 * time.Second)
-	}
-
-	return nil
-}
-
-// 并发安全写入示例
-func concurrentWriteExample(filename string) {
-	header := []string{"Thread", "Message", "Timestamp"}
-
-	writer, err := NewCSVWriter(filename, header)
-	if err != nil {
-		fmt.Printf("创建写入器失败: %v\n", err)
-		return
-	}
-	defer writer.Close()
-
-	var wg sync.WaitGroup
-
-	// 启动多个goroutine同时写入
-	for i := 1; i <= 5; i++ {
-		wg.Add(1)
-		go func(threadID int) {
-			defer wg.Done()
-
-			for j := 1; j <= 3; j++ {
-				row := []string{
-					fmt.Sprintf("Thread-%d", threadID),
-					fmt.Sprintf("Message-%d from thread %d", j, threadID),
-					time.Now().Format("2006-01-02 15:04:05.000"),
-				}
-
-				if err := writer.WriteRow(row); err != nil {
-					fmt.Printf("线程 %d 写入失败: %v\n", threadID, err)
-				} else {
-					fmt.Printf("线程 %d 写入消息 %d\n", threadID, j)
-				}
-
-				time.Sleep(time.Millisecond * 100)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	fmt.Println("并发写入完成！")
-}
-
-// 读取CSV内容（用于验证）
-func readCSV(filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("\n=== 读取CSV文件内容 ===\n")
-	fmt.Printf("总行数: %d\n", len(records))
-	for i, record := range records {
-		fmt.Printf("行 %d: %v\n", i, record)
-	}
-
-	return nil
-}
-
-func main() {
-	fmt.Println("=== CSV增量写入Demo ===")
-
-	// 示例1: 批量写入
-	fmt.Println("\n1. 批量写入示例")
-	if err := batchWriteExample("products.csv", nil, nil, false); err != nil {
-		fmt.Printf("批量写入失败: %v\n", err)
-	}
-
-	// 示例2: 增量追加
-	fmt.Println("\n2. 增量追加示例")
-	if err := incrementalWriteExample("logs.csv"); err != nil {
-		fmt.Printf("增量写入失败: %v\n", err)
-	}
-
-	// 示例3: 并发写入
-	fmt.Println("\n3. 并发写入示例")
-	concurrentWriteExample("concurrent.csv")
-
-	// 验证文件内容
-	fmt.Println("\n4. 验证写入结果")
-
-	files := []string{"products.csv", "logs.csv", "concurrent.csv"}
-	for _, file := range files {
-		fmt.Printf("\n文件: %s\n", file)
-		if err := readCSV(file); err != nil {
-			fmt.Printf("读取失败: %v\n", err)
-		}
-	}
-
-	// 清理示例文件
-	fmt.Println("\n5. 清理临时文件")
-	for _, file := range files {
-		if err := os.Remove(file); err != nil {
-			fmt.Printf("删除文件 %s 失败: %v\n", file, err)
-		} else {
-			fmt.Printf("已删除: %s\n", file)
-		}
-	}
-
-	fmt.Println("\nDemo完成！")
 }

@@ -3,9 +3,7 @@ package utils_exec
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
-	"runtime/debug"
 )
 
 type ExecInfo struct {
@@ -55,45 +53,20 @@ func (er *ExecResult) GetStderrString() string {
 	return er.Stderr.String()
 }
 
+// ExecCmd 执行外部命令；ctx 取消时会终止子进程。
 func ExecCmd(ctx context.Context, name string, args []string) *ExecInfo {
 	res := &ExecInfo{
 		Command: &ExecCommand{
 			Name: name,
 			Args: args,
 		},
-		Result: &ExecResult{
-			Stdout: bytes.Buffer{},
-			Stderr: bytes.Buffer{},
-			Err:    nil,
-		},
+		Result: &ExecResult{},
 	}
 
-	errCh := make(chan error, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// 将 panic 信息转换成 error 并写入 errCh
-				errCh <- fmt.Errorf("panic occurred: %v; %s", r, debug.Stack())
-			}
-		}()
-
-		cmd := exec.Command(name, args...) // 要执行的命令 // 你可以替换成任何命令，如 "ffmpeg", "curl", etc.
-
-		// 捕获输出（标准输出 & 标准错误）  var stdout, stderr bytes.Buffer
-		cmd.Stdout = &res.Result.Stdout
-		cmd.Stderr = &res.Result.Stderr
-
-		// 执行命令
-		errCh <- cmd.Run() // 命令执行完成后发送信号
-	}()
-
-	select {
-	case <-ctx.Done():
-		res.Result.Err = ctx.Err()
-	case err := <-errCh:
-		res.Result.Err = err // 这里可以添加其他逻辑，如果需要在执行命令前做一些事情
-	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = &res.Result.Stdout
+	cmd.Stderr = &res.Result.Stderr
+	res.Result.Err = cmd.Run()
 
 	return res
 }

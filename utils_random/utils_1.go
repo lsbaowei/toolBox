@@ -31,8 +31,11 @@ func NewWithSeed(seed int64) *RandUtil {
 	return &RandUtil{r: rand.New(src)}
 }
 
-// Intn returns a random int in [0, n).
+// Intn returns a random int in [0, n). n <= 0 时返回 0。
 func (ru *RandUtil) Intn(n int) int {
+	if n <= 0 {
+		return 0
+	}
 	ru.mu.Lock()
 	defer ru.mu.Unlock()
 	return ru.r.Intn(n)

@@ -152,14 +152,6 @@ func wallClockIn(t time.Time, loc *time.Location) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc)
 }
 
-func getLoc(tz string) *time.Location {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.Local
-	}
-	return loc
-}
-
 func hasZoneInfo(layout string) bool {
 	return strings.Contains(layout, "Z") ||
 		strings.Contains(layout, "-0700") ||
