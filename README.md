@@ -1,129 +1,51 @@
 # Toolkit for golang
-    简单好用，按照功能分文件夹（包）存放
 
-## 任务1
-    基本功能：`utils_time` 将时间字符串（Unix 秒/毫秒、常见 RFC/自定义布局）解析为 `time.Time`。
+`toolBox` 是一个按功能拆分的 Go 工具库，目标是提供简单、可测试、容易直接接入业务代码的小型工具包。
 
-    **支持形态**
-    - Unix：纯十进制整数；`0 < 秒 < 1e10`，`1e10 <= 毫秒 < 1e13`（与 `ParseUnixTimestamp` 一致）
-    - 布局：`2006-01-02`、`2006-01-02 15:04:05`、RFC3339/1123/822、ANSIC、UnixDate、RubyDate 等（见 `utils_time/v1.go` 中 `layouts`）
+## 安装
 
-    **入口**
-    - `ParseTimeUTC`：无时区布局按 UTC 墙钟；含 offset 的布局保留原偏移
-    - `ParseTime(str, defaultTZ)`：无时区布局按 `defaultTZ` 墙钟（`nil` 时用 `Local`）
-    - `ParseUnixTimestamp`：仅解析整数时间戳
+```shell
+go get github.com/lsbaowei/toolBox
+```
 
-    **BREAKING（相对旧版）**
-    - 时间戳 `0`、负数、超出安全区间、非纯数字串不再被当作 Unix 成功解析
-    - `ParseTime` / `ParseTimeUTC` 的 Unix 路径统一走 `ParseUnixTimestamp`（不再使用 `1e12` 或无前缀零的宽松逻辑）
+按需导入具体子模块：
 
-## 任务2：时间对象 `DateTime`
+```go
+import "github.com/lsbaowei/toolBox/utils_time"
+```
 
-    不可变时间包装，方法返回新 `*DateTime`。
+## 模块索引
 
-    **构造**
-    - `New(nil)` → 当前时间
-    - `New(&t)` → 指定基础时间
+- [`utils_cache_version`](utils_cache_version/README.md)：第三方版本变更时的缓存版本渐进释放、粘性灰度和最新版本目标选择。
+- [`utils_csv`](utils_csv/README.md)：CSV 一次性写入、带缓冲追加写入和结构化数据写入。
+- [`utils_exec`](utils_exec/README.md)：外部命令执行封装，捕获 `stdout`、`stderr` 和执行错误。
+- [`utils_gc`](utils_gc/README.md)：Go `gctrace` 日志捕获、解析和结构化输出。
+- [`utils_json`](utils_json/README.md)：JSON 编解码、map 辅助函数和 protobuf 结构转换。
+- [`utils_maps`](utils_maps/README.md)：基于 `sync.Map` 的进程内过期缓存。
+- [`utils_random`](utils_random/README.md)：伪随机、安全随机和可指定 seed 的随机工具。
+- [`utils_time`](utils_time/README.md)：时间字符串解析、Unix 时间戳解析和不可变 `DateTime`。
 
-    **基础方法**
-    - `Time()` → `time.Time`
-    - `Format` / `FormatRFC3339` / `FormatDate` / `FormatDateTime`
-    - `Add` / `AddDate`
+## 设计原则
 
-    **边界（沿用基础时间的 Location）**
-    - `StartOfDay` / `EndOfDay`（结束为 `23:59:59.999999999`）
-    - `StartOfWeek` / `EndOfWeek`（周一至周日，结束 `23:59:59`）
-    - `StartOfMonth` / `EndOfMonth`（结束 `23:59:59`）
+- 按功能目录组织，每个 `utils_*` 目录对应一个 Go package。
+- 尽量只依赖 Go 标准库；确需外部依赖时保持明确边界。
+- 公共函数保持小而直接，便于复制到业务场景中使用。
+- 重要边界通过单元测试覆盖。
 
-    **示例**
+## 测试
 
-    ```go
-    loc, _ := time.LoadLocation("Asia/Shanghai")
-    t, _ := ParseTime("2024-06-15 14:30:00", loc)
-    d := New(&t)
-    _ = d.StartOfDay().FormatDate()           // 2024-06-15
-    _ = d.EndOfDay().FormatDateTime()         // 2024-06-15 23:59:59
-    _ = d.StartOfWeek().AddDate(0, 0, 7)     // 链式：下周同一时刻
-    ```
+运行全量测试：
 
-## 任务2.1：`DateTime` 辅助方法
+```shell
+go test ./...
+```
 
-    - `RemainingSeconds(other *time.Time) int64` — `基础时间.Unix() - other.Unix()`；`other == nil` 时用当前时间；可为负
-    - `Random(max int64) int64` — 以当前毫秒时间戳为种子的伪随机数，`[0, max)`；`max <= 0` 返回 `0`
+运行 `utils_cache_version` benchmark：
 
-    ```go
-    d := New(&expireAt)
-    sec := d.RemainingSeconds(nil)  // 距现在剩余秒
-    n := d.Random(100)              // [0, 100)
-    ```
+```shell
+go test ./utils_cache_version -run=^$ -bench='BenchmarkManagerSelectVersion' -benchmem
+```
 
-## 任务3：代码审查与加固（已完成）
+## 文档
 
-    全库审查与修复见 [CHANGELOG.md](CHANGELOG.md)。摘要：修复 `JSONDecode`、随机数上界、`OnceFullWrite` panic、`ExecCmd` 上下文取消等；demo 迁至 `cmd/csvdemo`；补充多包单元测试。
-
-## 任务4：随机数优化（已完成）
-
-    **伪随机**（复用 `*rand.Rand`，适合抖动、抽样、非安全场景）
-
-    ```go
-    d := utils_time.New(nil)
-    n := d.Random(100)                    // DateTime，毫秒因子播种
-
-    ru := utils_random.New()
-    x := ru.Intn(100)                     // 独立实例，线程安全
-
-    y := utils_random.IntV2()             // 包级共享源
-    ```
-
-    **安全随机**（`crypto/rand`，适合 token、密钥、不可预测场景）
-
-    ```go
-    v, err := utils_random.SecureIntn(100) // [0, 100)
-    w, err := utils_random.SecureInt64()  // [0, 2^63)
-  // 或 utils_random.IntWithSafety()
-    ```
-
-    详见 [CHANGELOG.md](CHANGELOG.md) 中 `optimize-rand-reuse` 条目。
-
-
-## 任务5：utils_time/v1.go（已完成）
-
-    `parseWithLayouts` 支持以下常见 ISO 类时间字符串：
-
-    - `2025-11-19T11:33:19.920584349+08:00` — `RFC3339Nano`
-    - `2026-05-18T15:29:04.527+08:00` — `RFC3339Nano`
-    - `2025-01-02T15:04:05+08:00` — `RFC3339`
-    - `2025-01-02T15:04:05` — `2006-01-02T15:04:05`（墙钟，无时区）
-
-## 任务6：缓存版本渐进释放
-
-    `utils_cache_version` 用于第三方版本变更时选择本次请求应使用的缓存版本，避免缓存 key 立刻全量切到新版本导致第三方接口流量突增。
-
-    **入口**
-    - `New(Config)`：创建单进程内的版本释放管理器
-    - `SelectVersion(SelectOptions)`：传入业务标识、第三方当前版本和当前时间，返回应使用的缓存版本
-
-    **行为**
-    - 首次观察到的版本会直接成为稳定版本
-    - 后续发现新版本后，在 `ReleaseDuration` 内按业务标识确定性分桶逐步释放
-    - 已释放到目标版本的业务标识会保持粘性，后续不会回退到旧版本
-    - 释放期间如果第三方继续返回更新版本，活跃目标会更新到最新版本，中间快速版本不单独排队
-
-    ```go
-    mgr := utils_cache_version.New(utils_cache_version.Config{
-        ReleaseDuration: 3 * time.Hour,
-    })
-
-    got, err := mgr.SelectVersion(utils_cache_version.SelectOptions{
-        BusinessID: "user-123",
-        Version:    "v1.1.4",
-    })
-    if err != nil {
-        // handle error
-    }
-    cacheKey := "third-party:data:" + got.Version
-    _ = cacheKey
-    ```
-
-    `BusinessID` 应选择稳定且分布足够均匀的业务标识，如用户 ID、租户 ID 或资源 ID。默认 `Manager` 只维护当前进程内状态，多实例场景需要业务侧接入共享状态或保证同一业务标识路由到同一实例。
-
+每个子模块都有独立 `README.md`，包含适用场景、主要 API、示例和注意事项。根 README 只保留整体介绍与模块导航。
