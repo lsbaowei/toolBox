@@ -95,3 +95,35 @@
     - `2025-01-02T15:04:05+08:00` — `RFC3339`
     - `2025-01-02T15:04:05` — `2006-01-02T15:04:05`（墙钟，无时区）
 
+## 任务6：缓存版本渐进释放
+
+    `utils_cache_version` 用于第三方版本变更时选择本次请求应使用的缓存版本，避免缓存 key 立刻全量切到新版本导致第三方接口流量突增。
+
+    **入口**
+    - `New(Config)`：创建单进程内的版本释放管理器
+    - `SelectVersion(SelectOptions)`：传入业务标识、第三方当前版本和当前时间，返回应使用的缓存版本
+
+    **行为**
+    - 首次观察到的版本会直接成为稳定版本
+    - 后续发现新版本后，在 `ReleaseDuration` 内按业务标识确定性分桶逐步释放
+    - 已释放到目标版本的业务标识会保持粘性，后续不会回退到旧版本
+    - 释放期间如果第三方继续返回更新版本，活跃目标会更新到最新版本，中间快速版本不单独排队
+
+    ```go
+    mgr := utils_cache_version.New(utils_cache_version.Config{
+        ReleaseDuration: 3 * time.Hour,
+    })
+
+    got, err := mgr.SelectVersion(utils_cache_version.SelectOptions{
+        BusinessID: "user-123",
+        Version:    "v1.1.4",
+    })
+    if err != nil {
+        // handle error
+    }
+    cacheKey := "third-party:data:" + got.Version
+    _ = cacheKey
+    ```
+
+    `BusinessID` 应选择稳定且分布足够均匀的业务标识，如用户 ID、租户 ID 或资源 ID。默认 `Manager` 只维护当前进程内状态，多实例场景需要业务侧接入共享状态或保证同一业务标识路由到同一实例。
+
