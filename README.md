@@ -26,6 +26,7 @@ import "github.com/lsbaowei/toolBox/utils_time"
 
 - [`utils_json`](utils_json/README.md)：JSON 编解码、对象与 map 转换、map 过滤与合并，以及 protobuf 和 Go 原生类型转换。
 - [`utils_csv`](utils_csv/README.md)：CSV 一次性写入、带缓冲并发追加、表头管理和结构化数据写入。
+- [`utils_csv_sql`](utils_csv_sql/README.md)：读取带表头的 CSV，按字段规则转换数据，生成批量 `INSERT SQL` 并支持 MySQL/PostgreSQL 冲突忽略。
 
 ### 系统与诊断
 
