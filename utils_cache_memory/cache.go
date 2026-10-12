@@ -1,4 +1,5 @@
-// Package utils_cache_memory 提供进程内全局共享的并发字节缓存。
+// Package utils_cache_memory 提供两类互不共享存储的进程内缓存。
+// Cache 保存可直接返回的字节数据；StructCache 按结构体类型保存值。
 package utils_cache_memory
 
 import (

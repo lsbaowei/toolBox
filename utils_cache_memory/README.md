@@ -1,6 +1,13 @@
 ## 特殊内存缓存
 
-`utils_cache_memory` 提供零值可用、并发安全的进程内字节缓存。所有 `Cache` 实例共享一个全局 `sync.Map`，每个条目使用一个连续的 `[]byte` 保存：
+`utils_cache_memory` 提供两类零值可用、并发安全、存储互不共享的进程内缓存：
+
+- `Cache`：连续 `[]byte`，适合把 JSON 等字节直接写进 HTTP 响应。
+- `StructCache[T]`：按结构体类型保存值，适合业务对象。定义见 `struct_cache.go`。
+
+## 字节缓存
+
+所有 `Cache` 实例共享一个全局 `sync.Map`，每个条目使用一个连续的 `[]byte` 保存：
 
 - 前 8 字节：以 Big Endian 编码的 Unix 秒级绝对过期时间。
 - 剩余字节：调用方写入的业务数据。
@@ -96,3 +103,40 @@ if ok {
 	mutable[0] = 'X' // 正确：仅修改副本
 }
 ```
+
+## 结构体缓存
+
+`StructCache[T]` 与上面的 `Cache` 使用不同的 `sync.Map`。同一种 `T` 的全部实例共享一张表；`StructCache[User]` 和 `StructCache[Order]` 即使 key 相同也不会互相覆盖，也不会读写字节缓存。
+
+过期时间语义与 `Cache` 相同：正数是 Unix 秒级绝对时间，`0` 表示永不过期，负数让 `Set` 返回 `ErrInvalidExpiration`。清理仍由调用方通过 `Delete` 或 `DeleteExpired(now)` 主动完成，没有后台 goroutine。
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+
+	cachememory "github.com/lsbaowei/toolBox/utils_cache_memory"
+)
+
+type User struct {
+	ID   int
+	Name string
+}
+
+func main() {
+	var users cachememory.StructCache[User]
+	expireAt := time.Now().Add(time.Minute).Unix()
+	if err := users.Set("user:1", User{ID: 1, Name: "alice"}, expireAt); err != nil {
+		panic(err)
+	}
+
+	gotExpireAt, user, ok := users.Get("user:1")
+	if ok {
+		fmt.Printf("expireAt=%d id=%d\n", gotExpireAt, user.ID)
+	}
+}
+```
+
+`Set` 按值复制结构体，`Get` 返回的也是副本。修改副本中的值字段不会写回缓存。结构体里的切片、`map` 和指针仍与缓存共享底层数据，调用方不要修改这些引用指向的内容。

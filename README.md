@@ -18,7 +18,7 @@ import "github.com/lsbaowei/toolBox/utils_time"
 
 ### 缓存
 
-- [`utils_cache_memory`](utils_cache_memory/README.md)：全局共享的并发字节缓存，支持绝对过期时间、零复制读取、主动过期清理和常用 `sync.Map` 操作。
+- [`utils_cache_memory`](utils_cache_memory/README.md)：全局共享的进程内缓存。`Cache` 保存可直接返回的字节；`StructCache[T]` 按结构体类型分开保存值。两者都支持绝对过期时间和主动清理。
 - [`utils_maps`](utils_maps/README.md)：支持过期时间、后台定时清理和深拷贝读取的进程内通用对象缓存。
 - [`utils_cache_version`](utils_cache_version/README.md)：通过渐进释放、确定性分桶和粘性灰度选择缓存版本，避免第三方版本切换引发瞬时流量。
 
