@@ -47,7 +47,7 @@ func main() {
 - `expireAt == 0`：永不过期。
 - `expireAt < 0`：`Set` 返回 `ErrInvalidExpiration`，原有条目不变。
 
-`Get` 遇到过期条目时返回对应的过期时间和业务数据，同时令 `ok == false`，方便调用方判断或降级使用；该操作不会自动删除条目。缓存不会启动后台 goroutine，过期数据由调用方通过 `Delete` 或 `DeleteExpired(now)` 主动清理。
+`Get` 遇到过期条目时返回对应的过期时间和业务数据，同时令 `ok == false`，方便调用方判断或降级使用；该操作不会自动删除条目。缓存不会启动后台 goroutine，过期数据由调用方通过 `Delete` 或 `DeleteExpired(now)` 主动清理。过期只影响读取结果，条目仍占用内存。缓存没有条数或字节上限，持续写入新 key 又不定期清理时，进程内存会一直增长。
 
 ## API
 
@@ -108,7 +108,7 @@ if ok {
 
 `StructCache[T]` 与上面的 `Cache` 使用不同的 `sync.Map`。同一种 `T` 的全部实例共享一张表；`StructCache[User]` 和 `StructCache[Order]` 即使 key 相同也不会互相覆盖，也不会读写字节缓存。
 
-过期时间语义与 `Cache` 相同：正数是 Unix 秒级绝对时间，`0` 表示永不过期，负数让 `Set` 返回 `ErrInvalidExpiration`。清理仍由调用方通过 `Delete` 或 `DeleteExpired(now)` 主动完成，没有后台 goroutine。
+过期时间语义与 `Cache` 相同：正数是 Unix 秒级绝对时间，`0` 表示永不过期，负数让 `Set` 返回 `ErrInvalidExpiration`。清理仍由调用方通过 `Delete` 或 `DeleteExpired(now)` 主动完成，没有后台 goroutine。过期条目仍占用内存；同一种 `T` 的 key 持续增加又不清理时，这张表会一直变大。
 
 ```go
 package main
