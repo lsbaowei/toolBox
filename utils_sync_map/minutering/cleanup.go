@@ -9,9 +9,6 @@ func (m *MinuteRing) cleanupLoop() {
 		for slot := 0; slot < BucketCount; slot++ {
 			m.cleanupBucket(slot)
 		}
-		m.mu.Lock()
-		m.lastCleanedMinute = minuteID(m.nowNano())
-		m.mu.Unlock()
 	}
 
 	ticker := time.NewTicker(m.cleanupTick)
@@ -22,46 +19,14 @@ func (m *MinuteRing) cleanupLoop() {
 		case <-m.stopCh:
 			return
 		case <-ticker.C:
-			m.cleanupTickOnce()
+			// 按固定顺序每次只清一个桶，指针不跟绝对分钟跳。
+			//
+			// 9 号清完被卡住，恢复后下一拍清 10 号，再下一拍清 11 号。
+			// 已经排到的桶按原节奏继续被清，该删的数据不用再等一整圈；
+			// 每拍仍然只有一个桶，不会在恢复时一次性扫很多桶。
+			m.cleanupBucket(m.nextSlot)
+			m.nextSlot = (m.nextSlot + 1) % BucketCount
 		}
-	}
-}
-
-// cleanupTickOnce 按绝对分钟推进清理；若上次延迟，补扫遗漏 Bucket。
-// 同一时刻只允许一个清理任务运行。
-func (m *MinuteRing) cleanupTickOnce() {
-	m.mu.Lock()
-	if m.cleaning {
-		m.mu.Unlock()
-		return
-	}
-	m.cleaning = true
-	currentMinute := minuteID(m.nowNano())
-	last := m.lastCleanedMinute
-	m.mu.Unlock()
-
-	defer func() {
-		m.mu.Lock()
-		m.cleaning = false
-		m.lastCleanedMinute = currentMinute
-		m.mu.Unlock()
-	}()
-
-	if last < 0 {
-		m.cleanupBucket(bucketSlot(currentMinute))
-		return
-	}
-
-	// 补扫 (last, currentMinute]；若停顿超过一整轮，至少扫满 60 个物理槽。
-	delta := currentMinute - last
-	if delta <= 0 {
-		return
-	}
-	if delta > BucketCount {
-		delta = BucketCount
-	}
-	for i := int64(1); i <= delta; i++ {
-		m.cleanupBucket(bucketSlot(last + i))
 	}
 }
 

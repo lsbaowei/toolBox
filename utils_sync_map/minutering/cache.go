@@ -60,17 +60,16 @@ type MinuteRing struct {
 	cleanupTick      time.Duration
 	skipStartupSweep bool
 
+	// nextSlot 是下一次要清理的桶编号，按顺序 0→1→…→59→0 推进。
+	// 不绑定绝对时间：即便清理协程停顿很久，恢复后也只清下一个桶。
+	nextSlot int
+
 	stopCh    chan struct{}
 	doneCh    chan struct{}
 	startOnce sync.Once
 	stopOnce  sync.Once
 
 	nowFn atomic.Value // stores func() int64
-
-	// lastCleanedMinute 记录已完成清理的绝对分钟，用于延迟补扫。
-	mu                sync.Mutex
-	lastCleanedMinute int64
-	cleaning          bool
 }
 
 // New 创建 MinuteRing 并启动每分钟推进一个 Bucket 的清理协程。
@@ -87,12 +86,11 @@ func New(cfg Config) *MinuteRing {
 	}
 
 	m := &MinuteRing{
-		keyLocks:          make([]sync.Mutex, cfg.KeyLockShards),
-		cleanupTick:       cfg.CleanupTick,
-		skipStartupSweep:  cfg.SkipStartupSweep,
-		stopCh:            make(chan struct{}),
-		doneCh:            make(chan struct{}),
-		lastCleanedMinute: -1,
+		keyLocks:         make([]sync.Mutex, cfg.KeyLockShards),
+		cleanupTick:      cfg.CleanupTick,
+		skipStartupSweep: cfg.SkipStartupSweep,
+		stopCh:           make(chan struct{}),
+		doneCh:           make(chan struct{}),
 	}
 	m.nowFn.Store(now)
 	if !cfg.DisableCleanup {
