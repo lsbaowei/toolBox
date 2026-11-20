@@ -11,6 +11,9 @@ func (m *MinuteRing) cleanupLoop() {
 		}
 	}
 
+	// 桶宽等于清理间隔。此刻在第 S 格，下一拍（一个间隔之后）时间进入 S+1，就清 S+1。
+	m.nextSlot = bucketSlot(m.slotID(m.nowNano()) + 1)
+
 	ticker := time.NewTicker(m.cleanupTick)
 	defer ticker.Stop()
 
@@ -19,11 +22,8 @@ func (m *MinuteRing) cleanupLoop() {
 		case <-m.stopCh:
 			return
 		case <-ticker.C:
-			// 按固定顺序每次只清一个桶，指针不跟绝对分钟跳。
-			//
-			// 9 号清完被卡住，恢复后下一拍清 10 号，再下一拍清 11 号。
-			// 已经排到的桶按原节奏继续被清，该删的数据不用再等一整圈；
-			// 每拍仍然只有一个桶，不会在恢复时一次性扫很多桶。
+			// 每拍只清一格，然后顺序加一。无阻塞时这格就是当前时间槽。
+			// 停顿后不跳格：9 号清完卡住，恢复后清 10 号。
 			m.cleanupBucket(m.nextSlot)
 			m.nextSlot = (m.nextSlot + 1) % BucketCount
 		}

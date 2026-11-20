@@ -1,10 +1,7 @@
-// Package minutering 实现「双 sync.Map + 60 槽环形分钟分桶」缓存。
+// Package minutering 实现「双 sync.Map + 60 槽环形时间分桶」缓存。
 //
-// 设计要点（对应 README_task_2）：
-//   - m1 存业务数据，Load 只访问 m1；
-//   - m2 为 60 个物理分钟 Bucket，每分钟后台检查一个；
-//   - Entry 不可变；TTL 更新不主动迁移旧索引，由 Cleanup 回收；
-//   - 允许过期数据短暂残留（异步过期语义）。
+// 桶的时间跨度等于清理间隔。过期 key 放入「过期时间槽的下一格」，
+// 清理指针无阻塞时也按同一跨度走格，扫到该桶时 key 已经过期。
 package minutering
 
 import (
@@ -18,8 +15,6 @@ import (
 const (
 	// BucketCount 固定物理 Bucket 数量。
 	BucketCount = 60
-	// BucketDuration 单个 Bucket 对应的时间粒度。
-	BucketDuration = time.Minute
 	// DefaultKeyLockShards 默认 KEY 分片锁数量。
 	DefaultKeyLockShards = 256
 )
@@ -29,7 +24,7 @@ var hashSeed = maphash.MakeSeed()
 // Config 可选配置。零值字段在 New 时填入默认值。
 type Config struct {
 	KeyLockShards int
-	// CleanupTick 清理推进间隔，默认 1 分钟；测试可缩短。
+	// CleanupTick 清理推进间隔，也是每个桶覆盖的时间跨度。默认 1 分钟。
 	CleanupTick time.Duration
 	// SkipStartupSweep 为 true 时跳过启动全量扫描（仅测试用）。
 	SkipStartupSweep bool
@@ -50,7 +45,7 @@ type bucket struct {
 	items sync.Map // key -> int64(expireAt)
 }
 
-// MinuteRing 是固定 1 分钟粒度的 60 槽环形时间分桶缓存。
+// MinuteRing 是 60 槽环形时间分桶缓存。桶跨度等于 CleanupTick。
 type MinuteRing struct {
 	m1 sync.Map // key -> *Entry
 
@@ -61,7 +56,7 @@ type MinuteRing struct {
 	skipStartupSweep bool
 
 	// nextSlot 是下一次要清理的桶编号，按顺序 0→1→…→59→0 推进。
-	// 不绑定绝对时间：即便清理协程停顿很久，恢复后也只清下一个桶。
+	// 无阻塞时它和时间槽对齐；停顿后仍只清下一格，不跳到当前时间槽。
 	nextSlot int
 
 	stopCh    chan struct{}
@@ -137,13 +132,15 @@ func (m *MinuteRing) Store(key, value any, ttl time.Duration) {
 	now := m.nowNano()
 	expireAt := now + int64(ttl)
 
-	currentMinute := minuteID(now)
-	expireMinute := minuteID(expireAt)
-	dueMinute := expireMinute
-	if dueMinute < currentMinute+1 {
-		dueMinute = currentMinute + 1
+	// 桶跨度就是清理间隔。key 放进过期时间槽的下一格：
+	// 指针对齐走到这一格时，ExpireAt 已经过去，这一拍就能删掉。
+	current := m.slotID(now)
+	expire := m.slotID(expireAt)
+	due := expire + 1
+	if due < current+1 {
+		due = current + 1
 	}
-	slot := bucketSlot(dueMinute)
+	slot := bucketSlot(due)
 
 	entry := &Entry{
 		Value:      value,
@@ -193,8 +190,9 @@ func (m *MinuteRing) getKeyLock(key any) *sync.Mutex {
 	return &m.keyLocks[h%uint64(len(m.keyLocks))]
 }
 
-func minuteID(timestamp int64) int64 {
-	return timestamp / int64(time.Minute)
+// slotID 用清理间隔把 Unix 纳秒换成绝对时间槽编号。
+func (m *MinuteRing) slotID(timestamp int64) int64 {
+	return timestamp / int64(m.cleanupTick)
 }
 
 func bucketSlot(minute int64) int {
