@@ -157,3 +157,5 @@ func main() {
 ```shell
 go test -race ./utils_sync_map/...
 ```
+
+和 `sync.Map` 的读取、写入、混合负载对比见 [README_benchmark.md](README_benchmark.md)。并发读取与 `sync.Map` 持平，后台清理不拖慢 `Load`；写入更慢，读多写少时差距只来自写入。
